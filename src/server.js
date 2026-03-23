@@ -17,7 +17,7 @@ const isProd = process.env.NODE_ENV === "production";
 if (isProd) {
   const ALLOWED = [
     "http://localhost:3000",
-    "https://srmx-frontend.vercel.app",
+    "https://srmx-beta.vercel.app",
     process.env.FRONTEND_URL,
   ].filter(Boolean);
   app.use(cors({
