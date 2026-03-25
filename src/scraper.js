@@ -1,4 +1,5 @@
 const axios = require("axios");
+const fs = require("fs");
 const { CookieJar } = require("tough-cookie");
 const { wrapper } = require("axios-cookiejar-support");
 const cheerio = require("cheerio");
@@ -12,6 +13,7 @@ const PAGES = {
   ATTENDANCE: "My_Attendance",
   TIMETABLE_B1: "Unified_Time_Table_2025_Batch_1",
   TIMETABLE_B2: "Unified_Time_Table_2025_batch_2",
+  MY_TIMETABLE: "My_Time_Table_2023_24",
 };
 
 // Security: strip HTML tags from scraped text
@@ -117,7 +119,9 @@ async function fetchPage(client, pageName) {
     `/srm_university/${PORTAL}/page/${pageName}`,
     { headers: { "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", Referer: `${BASE}/`, Accept: "*/*" } }
   );
-  return typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+  const data = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+  fs.writeFileSync(`last_fetch_${pageName}.html`, data);
+  return data;
 }
 
 function decodeHexHtml(rawHtml) {
@@ -131,7 +135,8 @@ function decodeHexHtml(rawHtml) {
 }
 
 function decodeHexString(str) {
-  return str.replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  const decoded = str.replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  return decoded.replace(/\\n/g, '\n').replace(/\\\//g, '/').replace(/\\-/g, '-').replace(/\\"/g, '"').replace(/\\'/g, "'");
 }
 
 function parseAcademicStatus(rawHtml) {
@@ -237,7 +242,55 @@ async function getTimetable(client, batch = 1) {
   return { success: true, data, batch };
 }
 
-module.exports = { login, getAttendance, getMarks, getTimetable, getProfile, getAllData, fetchPage, getCalendar };
+function parseMyTimetable(rawHtml) {
+  const decoded = decodeHexHtml(rawHtml);
+  const $ = cheerio.load(decoded);
+  const courses = [];
+
+  $("table").each((_, table) => {
+    const headerText = $(table).find("tr").first().text();
+    if (!headerText.includes("Course Code") || !headerText.includes("Slot")) return;
+
+    const headers = $(table).find("tr").first().find("td,th")
+      .map((_, c) => sanitize($(c).text())).get().filter(h => h);
+
+    $(table).find("tr").slice(1).each((_, row) => {
+      const cells = $(row).find("td").map((_, c) => sanitize($(c).text())).get();
+      if (cells.length < 5) return;
+
+      const obj = {};
+      headers.forEach((h, i) => { if (h) obj[h] = cells[i] || ""; });
+
+      const courseCode = obj["Course Code"] || "";
+      if (!courseCode.match(/^\d{2}[A-Z]/)) return;
+
+      const slotRaw = obj["Slot"] || "";
+      const slots = slotRaw.split(/[-,\/\s]+/).map(s => s.trim()).filter(s => s && s.length > 0);
+
+      courses.push({
+        courseCode,
+        courseTitle: obj["Course Title"] || "",
+        courseType: obj["Course Type"] || "",
+        category: obj["Category"] || "",
+        facultyName: obj["Faculty Name"] || "",
+        slot: slotRaw,
+        slots,
+        roomNo: obj["Room No."] || obj["Room No"] || "",
+        credit: obj["Credit"] || "",
+      });
+    });
+  });
+
+  return courses;
+}
+
+async function getMyTimetable(client) {
+  const html = await fetchPage(client, PAGES.MY_TIMETABLE);
+  const data = parseMyTimetable(html);
+  return { success: true, data };
+}
+
+module.exports = { login, getAttendance, getMarks, getTimetable, getProfile, getAllData, fetchPage, getCalendar, getMyTimetable };
 
 async function getCalendar(client) {
   const CALENDAR_PAGE = "Academic_Planner_2025_26_EVEN";

@@ -5,7 +5,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const NodeCache = require("node-cache");
-const { login, getAttendance, getMarks, getTimetable, getProfile, getAllData, getCalendar } = require("./scraper");
+const { login, getAttendance, getMarks, getTimetable, getProfile, getAllData, getCalendar, getMyTimetable } = require("./scraper");
 
 const app = express();
 
@@ -172,6 +172,17 @@ app.get("/api/timetable", requireSession, async (req, res) => {
   }
 });
 
+// ─── GET /api/my-timetable ────────────────────────────────────────────────────
+app.get("/api/my-timetable", requireSession, async (req, res) => {
+  try {
+    const data = await cachedFetch(`mytimetable_${req.session.email}`, () =>
+      getMyTimetable(req.session.client));
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch personal timetable." });
+  }
+});
+
 // ─── GET /api/all ─────────────────────────────────────────────────────────────
 app.get("/api/all", requireSession, async (req, res) => {
   try {
@@ -190,7 +201,7 @@ app.post("/api/logout", requireSession, (req, res) => {
   sessions.delete(token);
   cache.del([
     `profile_${email}`, `attendance_${email}`, `marks_${email}`,
-    `timetable_${email}_1`, `timetable_${email}_2`, `all_${email}`
+    `timetable_${email}_1`, `timetable_${email}_2`, `all_${email}`, `mytimetable_${email}`
   ]);
   res.json({ success: true });
 });
