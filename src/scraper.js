@@ -237,4 +237,35 @@ async function getTimetable(client, batch = 1) {
   return { success: true, data, batch };
 }
 
-module.exports = { login, getAttendance, getMarks, getTimetable, getProfile, getAllData, fetchPage };
+module.exports = { login, getAttendance, getMarks, getTimetable, getProfile, getAllData, fetchPage, getCalendar };
+
+async function getCalendar(client) {
+  const CALENDAR_PAGE = "Academic_Planner_2025_26_EVEN";
+  const res = await client.get(
+    `/srm_university/${PORTAL}/page/${CALENDAR_PAGE}`,
+    { headers: { "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", Referer: `${BASE}/`, Accept: "*/*" } }
+  );
+  const raw = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+  return parseCalendarHtml(raw);
+}
+
+function parseCalendarHtml(rawHtml) {
+  const decoded = decodeHexHtml(rawHtml);
+  const $ = cheerio.load(decoded);
+  const months = [];
+
+  $("table").each((_, table) => {
+    const headerText = $(table).find("tr").first().text();
+    // Skip non-calendar tables
+    if (headerText.includes("Attn") || headerText.includes("Course")) return;
+
+    const rows = [];
+    $(table).find("tr").each((_, row) => {
+      const cells = $(row).find("td,th").map((_, c) => sanitize($(c).text())).get();
+      if (cells.some(c => c)) rows.push(cells);
+    });
+    if (rows.length > 2) months.push(rows);
+  });
+
+  return { success: true, data: months };
+}

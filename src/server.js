@@ -5,7 +5,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const NodeCache = require("node-cache");
-const { login, getAttendance, getMarks, getTimetable, getProfile, getAllData } = require("./scraper");
+const { login, getAttendance, getMarks, getTimetable, getProfile, getAllData, getCalendar } = require("./scraper");
 
 const app = express();
 
@@ -17,7 +17,7 @@ const isProd = process.env.NODE_ENV === "production";
 if (isProd) {
   const ALLOWED = [
     "http://localhost:3000",
-    "https://srmx-beta.vercel.app",
+    "https://srmx-frontend.vercel.app",
     process.env.FRONTEND_URL,
   ].filter(Boolean);
   app.use(cors({
@@ -196,6 +196,11 @@ app.post("/api/logout", requireSession, (req, res) => {
 });
 
 // ─── GET /api/health ──────────────────────────────────────────────────────────
+app.get("/api/calendar", requireSession, async (req, res) => {
+  try { res.json(await cachedFetch(`calendar_${req.session.email}`, () => getCalendar(req.session.client))); }
+  catch { res.status(500).json({ error: "Failed to fetch calendar." }); }
+});
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
